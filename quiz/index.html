@@ -684,9 +684,6 @@ async function loadAudioFromSupabase(path, container) {
 }
 
 
-// --- Submit All ---
-document.querySelector('.submit-btn').addEventListener('click', submitAll);
-
 async function submitAll() {
   if (isSubmitting) return;
   if (isSubmitted()) {
@@ -773,7 +770,6 @@ async function submitAll() {
     // ---------------- Update state ----------------
     hydrateAnswers(data.user_answers);
     quizState.totalScore = data.total_score;
-    updateSubmitButton()
 
     payload.forEach(p => {
       if (!quizState.backendAnswers) quizState.backendAnswers = {};
@@ -781,6 +777,8 @@ async function submitAll() {
     });
 
     quizState.submitted = true;
+
+    updateSubmitButton();
 
     // ---------------- Re-render review ----------------
     renderQuiz();
