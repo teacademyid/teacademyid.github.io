@@ -328,8 +328,15 @@ function renderMultipleChoice(set, container) {
       } else {
         // --- Interaction mode ---
         btn.addEventListener('click', () => {
-          options.querySelectorAll('.option').forEach(o => o.classList.remove('selected'));
-          btn.classList.add('selected');
+if (!q.multiSelect) {
+  // Single-select
+  options.querySelectorAll('.option').forEach(o => o.classList.remove('selected'));
+  btn.classList.add('selected');
+} else {
+  // Multi-select
+  btn.classList.toggle('selected');
+}
+
         });
       }
 
