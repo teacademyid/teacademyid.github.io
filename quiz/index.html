@@ -773,6 +773,7 @@ async function submitAll() {
     // ---------------- Update state ----------------
     hydrateAnswers(data.user_answers);
     quizState.totalScore = data.total_score;
+    updateSubmitButton()
 
     payload.forEach(p => {
       if (!quizState.backendAnswers) quizState.backendAnswers = {};
