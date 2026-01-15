@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Practice Quiz</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Font & Icons -->
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <main class="quiz-container">
+    <h1>Sample Practice</h1>
+    <p class="subtitle">Take your time. Stay cozy. You’ve got this 🌱</p>
+    <div id="score-card" class="score-card hidden">
+        <h3>Your Score</h3>
+        <p><span id="score-value">0</span></p>
+    </div>
+
+
+    <div id="quiz-root"></div>
+
+    <button id="submit-all-btn" class="submit-btn">Submit All</button>
+  </main>
+    <div id="score-modal" class="score-modal hidden">
+  <div class="score-modal-card">
+    <h2>Great work 🌱</h2>
+    <p class="modal-score" id="modal-score-value">0 / 0</p>
+    <button id="close-score-modal" class="submit-btn">
+      Continue Review
+    </button>
+  </div>
+</div>
+
+<!-- Global Loading Overlay -->
+<div id="loading-overlay" class="loading-overlay">
+  <div class="loading-card">
+    <i class="fa-solid fa-leaf loading-icon"></i>
+    <p>Preparing your quiz…</p>
+  </div>
+</div>
+
+
+
+  <script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+
+const supabaseUrl = 'https://ugceocvmmgbimdqrmdjr.supabase.co';
+const supabaseKey = 'sb_publishable_RQu_T7WzPOIdLwR-pXhgpA_pPuqnOQz';
+const supabase = createClient(supabaseUrl, supabaseKey);
+const loadingOverlay = document.getElementById("loading-overlay");
+
+function showLoading(message = "Loading…") {
+  loadingOverlay.querySelector("p").textContent = message;
+  loadingOverlay.classList.remove("hidden");
+}
+
+function hideLoading() {
+  loadingOverlay.classList.add("hidden");
+}
+
+
+showLoading("Checking your session…");
+
+const {
+  data: { user },
+} = await supabase.auth.getUser();
+
+if (!user) {
+  window.location.href = "/login";
+  throw new Error("Not authenticated");
+}
+
+const userId = user.id;
+
+
+const root = document.getElementById('quiz-root');
+// Instead of window.location.pathname
+const params = new URLSearchParams(window.location.search);
+const quizId = params.get('quizId'); // 'd4da12eb-cc93-4198-95c8-ca1c0b360087'
+console.log(quizId)
+let quizData = [];
+let quizState = {
+  userAnswers: {},
+  correctAnswers: {},
+  totalScore: null,
+  instantGrading: true,
+  quizTotalPoints: null,
+  backendAnswers: {}
+};
+let isSubmitting = false;
+
+
+
+let timerInterval = null;
+
+// --- Fetch quiz ---
+async function fetchQuiz() {
+  try {
+    showLoading("Loading your quiz…");
+
+    const { data, error } = await supabase.rpc(
+      'get_quiz_with_user_attempt',
+      { p_quiz_id: quizId }
+    );
+
+    if (error) throw error;
+
+    const quiz = data;
+
+    quizState.totalScore = quiz.total_score;
+    quizState.instantGrading = quiz.instant_grading;
+    quizState.quizTotalPoints = quiz.total_points;
+
+    if (quiz.user_answers?.length) {
+      hydrateAnswers(quiz.user_answers);
+      quiz.user_answers.forEach(q => {
+        quizState.backendAnswers[q.id] = true;
+      });
+    }
+
+    quizData = quiz.questions.map(q => ({ ...q }));
+    document.querySelector('h1').textContent = quiz.title;
+
+    renderQuiz();
+    updateSubmitButton()
+
+
+    if (!isSubmitted()) {
+      startTimer(quiz.time_limit_minutes);
+    }
+
+    if (isGraded()) {
+      showScoreModal();
+    }
+
+  } catch (err) {
+    console.error(err);
+    alert("Failed to load quiz.");
+  } finally {
+    hideLoading(); // ✅ ONLY disappears when fully hydrated
+  }
+}
+
+
+
+function showScoreModal() {
+  const graded = isGraded();
+  const score = graded ? quizState.totalScore : 'Pending';
+  const total = graded ? quizState.quizTotalPoints ?? '—' : ''; // hide total if pending
+
+  const modal = document.getElementById('score-modal');
+  const modalScoreEl = document.getElementById('modal-score-value');
+
+  // Update modal title
+  modal.querySelector('h2').textContent = graded 
+    ? 'Great work 🌱' 
+    : 'Your quiz has been saved 🌱';
+
+  // Update modal score text
+  modalScoreEl.textContent = graded 
+    ? `${score} / ${total}`
+    : 'Pending'; // just show Pending big
+
+  modal.classList.remove('hidden');
+
+  // ---------------- Page section ----------------
+  let display = document.getElementById('score-display');
+  if (!display) {
+    display = document.createElement('div');
+    display.id = 'score-display';
+    display.style.fontWeight = '700';
+    display.style.marginBottom = '1rem';
+    root.prepend(display); // prepend to quiz root
+  }
+
+  display.textContent = graded 
+    ? `Your Score: ${score} / ${total}`
+    : 'Pending'; // only pending
+}
+
+
+function updateSubmitButton() {
+  const submitBtn = document.getElementById('submit-all-btn');
+  submitBtn.removeEventListener('click', submitAll);
+  submitBtn.removeEventListener('click', () => window.location.href='/');
+
+  if (isSubmitted() || isGraded()) {
+    submitBtn.textContent = "Back";
+    submitBtn.addEventListener('click', () => {
+      window.location.href = '/';
+    });
+  } else {
+    submitBtn.textContent = "Submit All";
+    submitBtn.addEventListener('click', submitAll);
+  }
+}
+
+
+fetchQuiz();
+
+// --- Timer ---
+function startTimer(minutes) {
+  let timerEl = document.getElementById('timer');
+
+  if (!timerEl) {
+    timerEl = document.createElement('p');
+    timerEl.id = 'timer';
+    root.prepend(timerEl);
+  }
+
+  timerEl.classList.add('fixed'); // ensures it's always visible
+
+  let timeLeft = minutes * 60;
+  function updateTimer() {
+    const m = Math.floor(timeLeft / 60);
+    const s = timeLeft % 60;
+    timerEl.textContent = `Time left: ${m}:${s.toString().padStart(2,'0')}`;
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      submitAll();
+    }
+    timeLeft--;
+  }
+  updateTimer();
+  timerInterval = setInterval(updateTimer, 1000);
+}
+
+// --- Render ---
+function renderQuiz() {
+  root.innerHTML = '';
+  quizData.forEach(set => {
+    const section = document.createElement('section');
+    section.className = 'question-set';
+    section.innerHTML = `<h2>${set.title}</h2>`;
+    section.dataset.setId = set.id;
+
+    switch (set.questionSetType) {
+      case 'fill-blank': renderFillBlank(set, section); break;
+      case 'multiple-choice': renderMultipleChoice(set, section); break;
+      case 'match': renderMatch(set, section); break;
+      case 'speaking-response': renderSpeakingResponse(set, section); break;
+      case 'written-response': renderWrittenResponse(set, section); break;
+    }
+    root.appendChild(section);
+  });
+}
+
+// --- Fill-blank ---
+function renderFillBlank(set, container) {
+  renderSetMedia(set, container);
+  if (set.passage) renderPassage(set, container);
+
+  const userSetAnswers = quizState.userAnswers[set.id] || [];
+  const correctSetAnswers = quizState.correctAnswers[set.id] || [];
+
+  set.questions.forEach((q, index) => {
+    const p = document.createElement('p');
+
+    const input = document.createElement('input');
+    input.className = 'fill-blank';
+    input.dataset.setId = set.id;
+    input.dataset.index = index;
+    input.disabled = isSubmitted();
+
+
+    if (userSetAnswers[index]) {
+      input.value = userSetAnswers[index];
+    }
+
+    const parts = q.text.split('___');
+    p.append(parts[0] || '', input, parts[1] || '');
+    container.appendChild(p);
+
+    // --- Review state ---
+    if (isGraded()) {
+      const userAnswer = (userSetAnswers[index] || '').trim().toLowerCase();
+      const correctAnswer = String(correctSetAnswers[index] || '').trim().toLowerCase();
+
+      if (userAnswer === correctAnswer) {
+        input.classList.add('correct');
+      } else {
+        input.classList.add('wrong');
+        attachHint(input, correctSetAnswers[index]);
+      }
+    }
+  });
+}
+
+
+// --- Multiple Choice ---
+function renderMultipleChoice(set, container) {
+  renderSetMedia(set, container);
+  if (set.passage) renderPassage(set, container);
+  if (set.audio) container.innerHTML += `<audio controls src="${set.audio}"></audio>`;
+
+  const userSetAnswers = quizState.userAnswers[set.id] || [];
+  const correctSetAnswers = quizState.correctAnswers[set.id] || [];
+
+  set.questions.forEach((q, index) => {
+    const div = document.createElement('div');
+    div.className = 'question';
+    div.innerHTML = `<p>${q.question}</p>`;
+
+    const options = document.createElement('div');
+    options.className = 'options';
+
+    const userAnswers = userSetAnswers[index] || [];
+    const correctAnswers = correctSetAnswers[index] || [];
+
+    q.options.forEach((opt, i) => {
+      const btn = document.createElement('div');
+      btn.className = 'option';
+      btn.textContent = opt;
+      btn.dataset.index = i;
+
+      if (userAnswers.includes(i)) {
+        btn.classList.add('selected');
+      }
+
+      // --- Review mode ---
+      if (isSubmitted()) {
+        btn.style.pointerEvents = 'none';
+      } else {
+        // --- Interaction mode ---
+        btn.addEventListener('click', () => {
+          options.querySelectorAll('.option').forEach(o => o.classList.remove('selected'));
+          btn.classList.add('selected');
+        });
+      }
+
+if (isGraded()) {
+  if (correctAnswers.includes(i)) btn.classList.add('correct');
+  else if (userAnswers.includes(i)) btn.classList.add('wrong');
+}
+
+      options.appendChild(btn);
+    });
+
+    div.appendChild(options);
+    container.appendChild(div);
+  });
+}
+
+// --- Match ---
+function renderMatch(set, container) {
+  renderSetMedia(set, container);
+  if (set.passage) renderPassage(set, container);
+  if (set.audio) container.innerHTML += `<audio controls src="${set.audio}"></audio>`;
+
+  const userSetAnswers = quizState.userAnswers[set.id] || [];
+  const correctSetAnswers = quizState.correctAnswers[set.id] || [];
+
+  const choiceCard = document.createElement('div');
+  choiceCard.className = 'match-choices';
+  choiceCard.innerHTML =
+    '<h4>Answer Choices</h4><ul>' +
+    set.choices.map(c => `<li><strong>${c.key}.</strong> ${c.text}</li>`).join('') +
+    '</ul>';
+  container.appendChild(choiceCard);
+
+  set.questions.forEach((q, index) => {
+    const row = document.createElement('div');
+    row.className = 'match-row';
+
+    const label = document.createElement('span');
+    label.textContent = q.prompt;
+
+    const select = document.createElement('select');
+    select.disabled = isSubmitted();
+
+    select.innerHTML = '<option value="">—</option>';
+    set.choices.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.key;
+      opt.textContent = c.key;
+      select.appendChild(opt);
+    });
+
+    if (userSetAnswers[index]) {
+      select.value = userSetAnswers[index];
+    }
+
+    // --- Review state ---
+    if (isGraded()) {
+      if (select.value === correctSetAnswers[index]) {
+        select.classList.add('correct');
+      } else {
+        select.classList.add('wrong');
+      }
+    }
+
+    row.append(label, select);
+    container.appendChild(row);
+  });
+}
+
+
+// --- Media ---
+function renderSetMedia(set, container) {
+  if (!set.media?.length) return;
+  const mediaContainer = document.createElement('div');
+  mediaContainer.className = 'set-media';
+  set.media.forEach(m => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'media-item';
+    if (typeof m === 'string') wrapper.innerHTML = `<img src="${m}" alt="Inline media">`;
+    else if (m.html) wrapper.innerHTML = m.html;
+    mediaContainer.appendChild(wrapper);
+  });
+  container.appendChild(mediaContainer);
+}
+
+// --- Passage ---
+function renderPassage(set, container) {
+  const passageCard = document.createElement('div');
+  passageCard.className = 'passage-card';
+  if (set.passageTitle) {
+    const titleEl = document.createElement('h3');
+    titleEl.textContent = set.passageTitle;
+    passageCard.appendChild(titleEl);
+  }
+  const textEl = document.createElement('div');
+  textEl.innerHTML = set.passage;
+  passageCard.appendChild(textEl);
+  container.appendChild(passageCard);
+}
+
+// --- Hint ---
+function attachHint(el, answer) {
+  const hint = document.createElement('span');
+  hint.className = 'hint';
+  hint.innerHTML = '<i class="fa-solid fa-circle-question"></i>';
+  const tooltip = document.createElement('div');
+  tooltip.className = 'tooltip';
+  tooltip.style.display = 'none';
+  tooltip.innerHTML = `<strong>Answer:</strong> ${answer}`;
+  hint.onclick = () => tooltip.style.display = tooltip.style.display === 'none' ? 'block' : 'none';
+  el.parentNode.append(hint, tooltip);
+}
+
+function attachSpeakingFeedback(container, feedback) {
+  if (!feedback) return;
+
+  const hint = document.createElement('span');
+  hint.className = 'hint';
+  hint.innerHTML = '<i class="fa-solid fa-circle-question"></i>';
+
+  const tooltip = document.createElement('div');
+  tooltip.className = 'tooltip';
+  tooltip.style.display = 'none';
+  tooltip.innerHTML = `<strong>Feedback:</strong> ${feedback}`;
+
+  hint.onclick = () => {
+    tooltip.style.display = tooltip.style.display === 'none' ? 'block' : 'none';
+  };
+
+  container.append(hint, tooltip);
+}
+
+function renderWrittenResponse(set, container) {
+  renderSetMedia(set, container);
+  if (set.audio) container.innerHTML += `<audio controls src="${set.audio}"></audio>`;
+  if (set.passage) renderPassage(set, container);
+
+  const userSetAnswers = quizState.userAnswers[set.id] || [];
+  const correctSetAnswers = quizState.correctAnswers[set.id] || [];
+
+  set.questions.forEach((q, index) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'written-question';
+
+    const prompt = document.createElement('p');
+    prompt.textContent = q.question;
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'written-response';
+    textarea.rows = 10;
+    textarea.placeholder = 'Write your response here...';
+    textarea.disabled = isSubmitted();
+
+    if (userSetAnswers[index]) {
+      textarea.value = userSetAnswers[index];
+    }
+
+    wrapper.append(prompt, textarea);
+
+    // --- Graded feedback ---
+    if (isGraded() && correctSetAnswers[index]) {
+      attachHint(textarea, correctSetAnswers[index]);
+    }
+
+    container.appendChild(wrapper);
+  });
+}
+
+
+function renderSpeakingResponse(set, container) {
+  renderSetMedia(set, container);
+  if (set.passage) renderPassage(set, container);
+
+  const userSetAnswers = quizState.userAnswers[set.id] || [];
+  const correctSetAnswers = quizState.correctAnswers[set.id] || [];
+
+  set.questions.forEach((q, index) => {
+    const div = document.createElement('div');
+    div.className = 'speaking-question';
+
+    const prompt = document.createElement('p');
+    prompt.textContent = q.question;
+    div.appendChild(prompt);
+
+    const audioContainer = document.createElement('div');
+    audioContainer.className = 'speaking-controls';
+
+    // --- Load existing audio ---
+    if (userSetAnswers[index]) {
+      if (userSetAnswers[index].file) {
+        // local recording
+        const url = URL.createObjectURL(userSetAnswers[index].file);
+        const audioEl = document.createElement('audio');
+        audioEl.controls = true;
+        audioEl.src = url;
+        audioContainer.appendChild(audioEl);
+      } 
+      else if (typeof userSetAnswers[index] === 'string') {
+        // backend path
+        loadAudioFromSupabase(userSetAnswers[index], audioContainer);
+      }
+    }
+
+    // --- Feedback (graded only) ---
+    if (isGraded() && correctSetAnswers[index]) {
+      attachSpeakingFeedback(audioContainer, correctSetAnswers[index]);
+    }
+
+    // --- Recording allowed only before submission ---
+    if (!isSubmitted(set.id) && !isGraded()) {
+      createRecordControls(audioContainer, set.id, index);
+    }
+
+    div.appendChild(audioContainer);
+    container.appendChild(div);
+  });
+}
+
+
+function createRecordControls(container, setId, questionIndex) {
+  let mediaRecorder;
+  let chunks = [];
+
+  const recordBtn = document.createElement('button');
+  recordBtn.textContent = 'Record';
+  recordBtn.className = 'submit-btn big-record';
+
+  const stopBtn = document.createElement('button');
+  stopBtn.textContent = 'Stop';
+  stopBtn.className = 'submit-btn';
+  stopBtn.style.display = 'none'; // hidden initially
+
+  const audioEl = document.createElement('audio');
+  audioEl.controls = true;
+
+  container.append(recordBtn, stopBtn, audioEl);
+
+  recordBtn.addEventListener('click', async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert('Your browser does not support audio recording.');
+      return;
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    chunks = [];
+
+    mediaRecorder.ondataavailable = e => chunks.push(e.data);
+mediaRecorder.onstop = () => {
+  const blob = new Blob(chunks, { type: 'audio/webm' });
+  const file = new File([blob], `quiz_${quizId}_q${questionIndex + 1}.webm`, { type: 'audio/webm' });
+  const url = URL.createObjectURL(blob);
+
+  audioEl.src = url;
+
+  if (!quizState.userAnswers[setId]) quizState.userAnswers[setId] = [];
+  quizState.userAnswers[setId][questionIndex] = { file }; // save locally
+
+  // ✅ Save blob for submission
+  if (!quizState.speakingBlobs) quizState.speakingBlobs = {};
+  quizState.speakingBlobs[setId] = blob;
+
+  // Toggle buttons back
+  recordBtn.style.display = 'inline-block';
+  stopBtn.style.display = 'none';
+};
+
+    mediaRecorder.start();
+
+    // Toggle buttons
+    recordBtn.style.display = 'none';
+    stopBtn.style.display = 'inline-block';
+  });
+
+  stopBtn.addEventListener('click', () => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  });
+}
+
+
+
+async function loadAudioFromSupabase(path, container) {
+  const { data, error } = await supabase.storage
+    .from('quiz-answers')
+    .download(path);
+
+  if (error) return console.error(error);
+
+  const url = URL.createObjectURL(data);
+  const audioEl = document.createElement('audio');
+  audioEl.controls = true;
+  audioEl.src = url;
+
+  container.appendChild(audioEl);
+}
+
+
+// --- Submit All ---
+document.querySelector('.submit-btn').addEventListener('click', submitAll);
+
+async function submitAll() {
+  if (isSubmitting) return;
+  if (isSubmitted()) {
+    alert('Quiz already submitted');
+    return;
+  }
+
+  isSubmitting = true;
+  showLoading("Submitting your answers…");
+
+  try {
+    const payload = [];
+
+    // ---------------- Iterate question sets ----------------
+    for (const section of document.querySelectorAll('.question-set')) {
+      const setId = section.dataset.setId;
+      const set = quizData.find(s => s.id === setId);
+      if (!set) continue;
+
+      let answers = null;
+
+      switch (set.questionSetType) {
+        case 'fill-blank': {
+          const inputs = section.querySelectorAll('.fill-blank');
+          answers = Array.from(inputs).map(input => input.value.trim());
+          break;
+        }
+
+        case 'multiple-choice': {
+          answers = set.questions.map((_, qIndex) => {
+            const questionEl = section.querySelectorAll('.question')[qIndex];
+            if (!questionEl) return [];
+            const selected = questionEl.querySelectorAll('.option.selected');
+            return Array.from(selected).map(opt => parseInt(opt.dataset.index, 10));
+          });
+          break;
+        }
+
+        case 'match': {
+          const selects = section.querySelectorAll('.match-row select');
+          answers = Array.from(selects).map(sel => sel.value || null);
+          break;
+        }
+
+        case 'speaking-response': {
+          const blob = quizState.speakingBlobs?.[setId];
+          if (!blob) {
+            throw new Error('Please record your speaking response before submitting.');
+          }
+
+          const fileName = `${setId}.webm`;
+          const filePath = `user_${userId}/quiz_${quizId}/${fileName}`;
+          const file = new File([blob], fileName, { type: 'audio/webm' });
+
+          const { error: uploadError } = await supabase
+            .storage
+            .from('quiz-answers')
+            .upload(filePath, file, { upsert: true });
+
+          if (uploadError) throw uploadError;
+
+          answers = [filePath];
+          break;
+        }
+
+        case 'written-response': {
+          const textareas = section.querySelectorAll('textarea.written-response');
+          answers = Array.from(textareas).map(t => t.value.trim());
+          break;
+        }
+      }
+
+      payload.push({ id: setId, answers });
+    }
+
+    // ---------------- Supabase RPC ----------------
+    const { data, error } = await supabase.rpc('grade_quiz', {
+      p_quiz_id: quizId,
+      p_user_answers: payload
+    });
+
+    if (error) throw error;
+
+    // ---------------- Update state ----------------
+    hydrateAnswers(data.user_answers);
+    quizState.totalScore = data.total_score;
+
+    payload.forEach(p => {
+      if (!quizState.backendAnswers) quizState.backendAnswers = {};
+      quizState.backendAnswers[p.id] = true;
+    });
+
+    quizState.submitted = true;
+
+    // ---------------- Re-render review ----------------
+    renderQuiz();
+
+    // ---------------- Modal ----------------
+    showScoreModal();
+
+  } catch (err) {
+    console.error(err);
+    alert(err.message || 'Submission failed. Please try again.');
+  } finally {
+    isSubmitting = false;
+    hideLoading(); // ✅ always hide loader
+  }
+}
+
+
+
+document.getElementById('close-score-modal').addEventListener('click', () => {
+  document.getElementById('score-modal').classList.add('hidden');
+});
+
+function hydrateAnswers(answerData) {
+  quizState.userAnswers = {};
+  quizState.correctAnswers = {};
+  
+  answerData.forEach(q => {
+    quizState.userAnswers[q.id] = q.answers;
+    quizState.correctAnswers[q.id] = q.correct;
+  });
+}
+function isSubmitted(setId) {
+  // if setId is provided, check that specific question set
+  if (setId) return !!quizState.backendAnswers[setId];
+
+  // otherwise, check if any set is submitted
+  return Object.keys(quizState.backendAnswers).length > 0;
+}
+
+
+
+function isGraded() {
+  return quizState.totalScore !== null;
+}
+
+
+</script>
+
+
+
+</body>
+</html>

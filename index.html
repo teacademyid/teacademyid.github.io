@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Practice Test</title>
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;600&family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+
+  <!-- Icons -->
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+  />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="hero">
+    <h1>Practice Test</h1>
+    <p>Try these tests to check your ability.</p>
+  </header>
+
+  <main class="content">
+    
+  </main>
+    <!-- Global Loading Overlay -->
+  <div id="loading-overlay" class="loading-overlay hidden">
+    <div class="loading-card">
+      <div class="spinner"></div>
+      <p id="loading-text">Loading…</p>
+    </div>
+  </div>
+
+
+  <script type="module">
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+
+const Loading = (() => {
+  const overlay = document.getElementById('loading-overlay');
+  const textEl = document.getElementById('loading-text');
+
+  return {
+    show(message = 'Loading…') {
+      textEl.textContent = message;
+      overlay.classList.remove('hidden');
+    },
+    hide() {
+      overlay.classList.add('hidden');
+    }
+  };
+})();
+
+async function withLoading(fn, message = 'Loading…') {
+  try {
+    Loading.show(message);
+    await fn();
+  } finally {
+    Loading.hide();
+  }
+}
+
+
+const SUPABASE_URL = "https://ugceocvmmgbimdqrmdjr.supabase.co";
+const SUPABASE_KEY = "sb_publishable_RQu_T7WzPOIdLwR-pXhgpA_pPuqnOQz";
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const root = document.querySelector(".content");
+
+async function loadDiagnosticBundles() {
+  const { data, error } = await supabase.rpc("get_diagnostic_bundles");
+
+  // 🚨 Auth / permission failure → redirect to login
+  if (error) {
+    console.error("RPC error:", error);
+    window.location.href = "/login";
+    return;
+  }
+
+  renderBundles(data);
+}
+
+function renderBundles(bundles) {
+  root.innerHTML = ""; // clear existing content
+
+  bundles.forEach(section => {
+    const secEl = document.createElement("section");
+
+    // Section title (MODE → title case)
+    const h2 = document.createElement("h2");
+    h2.textContent = formatMode(section.mode);
+    secEl.appendChild(h2);
+
+    // Card grid
+    const grid = document.createElement("div");
+    grid.className = "card-grid";
+
+section.quizzes.forEach(quiz => {
+  const card = document.createElement("div");
+  card.className = "test-card";
+  if (quiz.completed) card.classList.add("completed");
+
+  card.addEventListener('click', () => {
+    window.location.href = `/quiz?quizId=${quiz.id}`;
+  });
+
+  // Status icon
+  const icon = document.createElement("i");
+  if (!quiz.completed) {
+    icon.className = "fa-solid fa-circle-xmark"; // Not started
+  } else if (quiz.completed && quiz.score === null) {
+    icon.className = "fa-solid fa-hourglass-half"; // Pending grading
+  } else {
+    icon.className = "fa-solid fa-circle-check"; // Graded
+  }
+  card.appendChild(icon);
+
+  // Quiz name
+  const name = document.createElement("span");
+  name.textContent = ` ${quiz.name}`;
+  card.appendChild(name);
+
+  // Score or pending text
+  const scoreEl = document.createElement("span");
+  scoreEl.className = "score";
+
+  if (!quiz.completed) {
+    scoreEl.textContent = "Not started";
+  } else if (quiz.completed && quiz.score === null) {
+    scoreEl.textContent = "Pending…";
+  } else {
+    scoreEl.textContent = `Score: ${quiz.score} / ${quiz.total_points}`;
+  }
+
+  card.appendChild(scoreEl);
+
+  grid.appendChild(card);
+});
+
+
+    secEl.appendChild(grid);
+    root.appendChild(secEl);
+  });
+}
+
+// Utility: "comprehensive" → "Comprehensive"
+function formatMode(mode) {
+  return mode.charAt(0).toUpperCase() + mode.slice(1);
+}
+
+// 🔥 Kick it off
+withLoading(loadDiagnosticBundles, 'Loading diagnostic tests…');
+</script>
+
+</body>
+</html>

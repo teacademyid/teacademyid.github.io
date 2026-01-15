@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login</title>
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;600&family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <header class="hero">
+    <h1>Welcome Back</h1>
+    <p>Sign in or create an account to continue your cozy learning journey 🌿</p>
+  </header>
+
+  <main class="auth-container">
+
+    <div class="auth-card">
+      <div class="auth-toggle">
+        <button id="loginBtn" class="active">Login</button>
+        <button id="signupBtn">Sign Up</button>
+      </div>
+
+      <form id="authForm">
+
+        <!-- Username only for signup -->
+<div class="form-group" id="usernameGroup">
+  <label for="username">Username</label>
+  <input type="text" id="username" name="username" placeholder="Choose a username">
+</div>
+
+
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" placeholder="you@example.com" required>
+        </div>
+
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" placeholder="Enter password" required>
+        </div>
+
+        <button type="submit" class="auth-submit">Submit</button>
+
+        <p class="auth-error" id="authError"></p>
+
+      </form>
+    </div>
+
+  </main>
+  <!-- Global Loading Overlay -->
+<div id="loading-overlay" class="loading-overlay hidden">
+  <div class="loading-card">
+    <i class="fa-solid fa-leaf loading-icon"></i>
+    <p>Getting things ready for you…</p>
+  </div>
+</div>
+
+  <script type="module">
+    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
+
+const SUPABASE_URL = "https://ugceocvmmgbimdqrmdjr.supabase.co";
+const SUPABASE_KEY = "sb_publishable_RQu_T7WzPOIdLwR-pXhgpA_pPuqnOQz";
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const loginBtn = document.getElementById("loginBtn");
+const signupBtn = document.getElementById("signupBtn");
+const usernameGroup = document.getElementById("usernameGroup");
+const authForm = document.getElementById("authForm");
+const authError = document.getElementById("authError");
+
+let isLogin = true;
+
+function toggleMode() {
+  isLogin = !isLogin;
+  usernameGroup.classList.toggle("active", !isLogin); // add/remove active class instead of display
+  loginBtn.classList.toggle("active");
+  signupBtn.classList.toggle("active");
+  authError.textContent = "";
+}
+
+
+loginBtn.addEventListener("click", () => {
+  if (!isLogin) toggleMode();
+});
+signupBtn.addEventListener("click", () => {
+  if (isLogin) toggleMode();
+});
+
+authForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  authError.textContent = "";
+
+  const username = document.getElementById("username").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+
+  // Validation
+  if (!email || !password || (!isLogin && !username)) {
+    authError.textContent = "Please fill in all required fields.";
+    return;
+  }
+
+  if (!isLogin && password.length < 6) {
+    authError.textContent = "Password must be at least 6 characters.";
+    return;
+  }
+
+  try {
+    showLoading(isLogin ? "Signing you in…" : "Creating your account…");
+
+    if (isLogin) {
+      // LOGIN
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) throw error;
+
+      localStorage.setItem("user_email", data.user.email);
+      localStorage.setItem("user_uuid", data.user.id);
+
+      // Optional redirect
+      window.location.href = "/";
+
+    } else {
+      // SIGNUP
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .insert([{ id: data.user.id, username, email }]);
+
+      if (profileError) throw profileError;
+
+      localStorage.setItem("user_email", email);
+      localStorage.setItem("user_username", username);
+      localStorage.setItem("user_uuid", data.user.id);
+
+      window.location.href = "/";
+    }
+
+  } catch (err) {
+    console.error(err);
+    authError.textContent = err.message || "Something went wrong. Try again.";
+    authError.style.color = "#b83f3f";
+    hideLoading();
+  }
+});
+
+
+const loadingOverlay = document.getElementById("loading-overlay");
+
+function showLoading(message = "Loading…") {
+  loadingOverlay.querySelector("p").textContent = message;
+  loadingOverlay.classList.remove("hidden");
+}
+
+function hideLoading() {
+  loadingOverlay.classList.add("hidden");
+}
+
+
+  </script>
+</body>
+</html>
