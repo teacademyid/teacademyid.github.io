@@ -260,6 +260,8 @@ function renderFillBlank(set, container) {
 
   set.questions.forEach((q, index) => {
     const p = document.createElement('p');
+renderQuestionMedia(q, container);
+
 
     const input = document.createElement('input');
     input.className = 'fill-blank';
@@ -304,7 +306,13 @@ function renderMultipleChoice(set, container) {
   set.questions.forEach((q, index) => {
     const div = document.createElement('div');
     div.className = 'question';
-    div.innerHTML = `<p>${q.question}</p>`;
+const questionText = document.createElement('p');
+questionText.textContent = q.question;
+div.appendChild(questionText);
+
+// 👇 NEW: question-level media
+renderQuestionMedia(q, div);
+
 
     const options = document.createElement('div');
     options.className = 'options';
@@ -372,6 +380,7 @@ function renderMatch(set, container) {
 
   set.questions.forEach((q, index) => {
     const row = document.createElement('div');
+    renderQuestionMedia(q, row);
     row.className = 'match-row';
 
     const label = document.createElement('span');
@@ -479,6 +488,7 @@ function renderWrittenResponse(set, container) {
 
   set.questions.forEach((q, index) => {
     const wrapper = document.createElement('div');
+    renderQuestionMedia(q, wrapper);
     wrapper.className = 'written-question';
 
     const prompt = document.createElement('p');
@@ -515,6 +525,7 @@ function renderSpeakingResponse(set, container) {
 
   set.questions.forEach((q, index) => {
     const div = document.createElement('div');
+    renderQuestionMedia(q, div);
     div.className = 'speaking-question';
 
     const prompt = document.createElement('p');
@@ -555,6 +566,45 @@ function renderSpeakingResponse(set, container) {
   });
 }
 
+
+function renderQuestionMedia(q, container) {
+  // Audio
+  if (q.audio) {
+    const audio = document.createElement('audio');
+    audio.controls = true;
+    audio.src = q.audio;
+    container.appendChild(audio);
+  }
+
+  // Passage
+  if (q.passage) {
+    const passage = document.createElement('div');
+    passage.className = 'passage-card';
+    passage.innerHTML = q.passage;
+    container.appendChild(passage);
+  }
+
+  // Generic media (images / html)
+  if (q.media?.length) {
+    const mediaContainer = document.createElement('div');
+    mediaContainer.className = 'set-media';
+
+    q.media.forEach(m => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'media-item';
+
+      if (typeof m === 'string') {
+        wrapper.innerHTML = `<img src="${m}" />`;
+      } else if (m.html) {
+        wrapper.innerHTML = m.html;
+      }
+
+      mediaContainer.appendChild(wrapper);
+    });
+
+    container.appendChild(mediaContainer);
+  }
+}
 
 function createRecordControls(container, setId, questionIndex) {
   let mediaRecorder;
