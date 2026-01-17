@@ -71,7 +71,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const root = document.querySelector(".content");
 
 async function loadDiagnosticBundles() {
-  const { data, error } = await supabase.rpc("get_diagnostic_bundles");
+  const { data, error } = await supabase.rpc("get_open_bundles");
 
   // 🚨 Auth / permission failure → redirect to login
   if (error) {
