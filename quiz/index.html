@@ -259,7 +259,7 @@ function renderFillBlank(set, container) {
   const correctSetAnswers = quizState.correctAnswers[set.id] || [];
 
   set.questions.forEach((q, index) => {
-    const p = document.createElement('p');
+    const p = document.createElement('div');
 renderQuestionMedia(q, container);
 
 
@@ -370,13 +370,15 @@ function renderMatch(set, container) {
   const userSetAnswers = quizState.userAnswers[set.id] || [];
   const correctSetAnswers = quizState.correctAnswers[set.id] || [];
 
-  const choiceCard = document.createElement('div');
-  choiceCard.className = 'match-choices';
-  choiceCard.innerHTML =
-    '<h4>Answer Choices</h4><ul>' +
-    set.choices.map(c => `<li><strong>${c.key}.</strong> ${c.text}</li>`).join('') +
-    '</ul>';
-  container.appendChild(choiceCard);
+  if (choicesEnabled){
+    const choiceCard = document.createElement('div');
+    choiceCard.className = 'match-choices';
+    choiceCard.innerHTML =
+      '<h4>Answer Choices</h4><ul>' +
+      set.choices.map(c => `<li><strong>${c.key}.</strong> ${c.text}</li>`).join('') +
+      '</ul>';
+    container.appendChild(choiceCard);
+  }
 
   set.questions.forEach((q, index) => {
     const row = document.createElement('div');
