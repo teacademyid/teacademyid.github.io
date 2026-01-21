@@ -259,9 +259,10 @@ function renderFillBlank(set, container) {
   const correctSetAnswers = quizState.correctAnswers[set.id] || [];
 
   set.questions.forEach((q, index) => {
-    const p = document.createElement('div');
-renderQuestionMedia(q, container);
+    const wrapper = document.createElement('div');
+    wrapper.className = 'fill-blank-question';
 
+    renderQuestionMedia(q, wrapper);
 
     const input = document.createElement('input');
     input.className = 'fill-blank';
@@ -269,14 +270,25 @@ renderQuestionMedia(q, container);
     input.dataset.index = index;
     input.disabled = isSubmitted();
 
-
     if (userSetAnswers[index]) {
       input.value = userSetAnswers[index];
     }
 
-    const parts = q.text.split('___');
-    p.append(parts[0] || '', input, parts[1] || '');
-    container.appendChild(p);
+    // --- Split the question text at the blank ---
+    const parts = q.text.split('______');
+
+    // Use template to render HTML
+    const temp1 = document.createElement('template');
+    temp1.innerHTML = parts[0] || '';
+    wrapper.appendChild(temp1.content);
+
+    wrapper.appendChild(input);
+
+    const temp2 = document.createElement('template');
+    temp2.innerHTML = parts[1] || '';
+    wrapper.appendChild(temp2.content);
+
+    container.appendChild(wrapper);
 
     // --- Review state ---
     if (isGraded()) {
@@ -292,6 +304,8 @@ renderQuestionMedia(q, container);
     }
   });
 }
+
+
 
 
 // --- Multiple Choice ---
@@ -370,7 +384,7 @@ function renderMatch(set, container) {
   const userSetAnswers = quizState.userAnswers[set.id] || [];
   const correctSetAnswers = quizState.correctAnswers[set.id] || [];
 
-  if (choicesEnabled){
+  if (set.choicesEnabled){
     const choiceCard = document.createElement('div');
     choiceCard.className = 'match-choices';
     choiceCard.innerHTML =
